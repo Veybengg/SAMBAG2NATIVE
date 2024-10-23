@@ -1,0 +1,7 @@
+<key>NSPhotoLibraryUsageDescription</key>
+<string>App needs access to your photo library to upload files.</string>
+<key>NSCameraUsageDescription</key>
+<string>App needs access to your camera to take photos.</string>
+<key>NSMicrophoneUsageDescription</key>
+<string>App needs access to your microphone for video recording.</string>
+s

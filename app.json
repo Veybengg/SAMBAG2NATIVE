@@ -1,0 +1,39 @@
+{
+  "expo": {
+    "name": "SAMBAG2",
+    "slug": "SAMBAG2",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/sambaglogo.png",
+    "scheme": "myapp",
+    "userInterfaceStyle": "automatic",
+  
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.alert.sambag2"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/sambaglogo.png",
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.alert.sambag2"
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "expo-router"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "b0bda0f9-bab2-419c-b49d-1527da69ee8f"
+      }
+    }
+  }
+}
