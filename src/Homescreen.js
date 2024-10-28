@@ -1,7 +1,7 @@
 // Homescreen.js
 import { StatusBar } from 'expo-status-bar';
 import { Video } from 'expo-av';
-import { Text, View, Image, ImageBackground, TouchableOpacity, Modal, Button, TextInput, Alert, PanResponder, ActivityIndicator, Platform } from 'react-native';
+import { Text, View, Image, ImageBackground, TouchableOpacity, Modal, Button, TextInput, Alert, PanResponder, ActivityIndicator, Platform, BackHandler } from 'react-native'; // Import Platform
 import React, { Component } from 'react';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
@@ -12,11 +12,12 @@ import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from "fire
 import tw from 'twrnc'; 
 import { database } from '../Backend/firebaseConfig'; 
 import { ref, get, set } from 'firebase/database';
-import * as Location from 'expo-location';
+import * as Location from 'expo-location'; // Location functionality
 import TermsAndConditionsModal from './TermsAndConditionsModal';
 
 const MAX_SUBMISSIONS = 10; // Maximum submissions allowed
 
+// Function to get or generate a device ID (same on both platforms)
 const getDeviceId = async () => {
   try {
     let deviceId = await AsyncStorage.getItem('deviceId');
@@ -35,7 +36,6 @@ export default class Homescreen extends Component {
   constructor(props) {
     super(props);
     this.state = {
-      showGif: true,
       showTutorial: false,
       modalVisible: false,
       typeModalVisible: false,
@@ -56,7 +56,10 @@ export default class Homescreen extends Component {
       limitReachedModalVisible: false,
       remainingSubmissions: 0,
       termsModalVisible: false,
+      selectedReportType: null,
     };
+
+    
 
     this.developers = [
       { id: 1, name: 'Jhun Paul Ceniza', role:'App & Arduino Developer', image: require('../assets/3.png'), description: '2nd Year BSIT, Southwestern University PHINMA' },
@@ -65,21 +68,26 @@ export default class Homescreen extends Component {
       { id: 4, name: 'Hassein Lei Bate', role: 'UI/UX Designer', image: require('../assets/1.png'), description: '2nd Year BSIT, Southwestern University PHINMA' },
     ];
 
+    // PanResponder remains platform-agnostic
     this.panResponder = PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
       onPanResponderMove: (evt, gestureState) => { },
       onPanResponderRelease: (evt, gestureState) => {
         const { dx } = gestureState;
-        if (dx > 30) { this.prevDeveloper(); }
-        else if (dx < -30) { this.nextDeveloper(); }
-      },
+        if (dx > 30) {
+          // Handle swipe gestures (works the same on both platforms)
+        }
+      }
     });
   }
-
   videoRef = React.createRef();
 
   async componentDidMount() {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+  if (status !== 'granted') {
+    alert('Sorry, we need camera roll permissions to make this work!');
+  }
     this.requestLocationPermission();
     this.fetchTypes();
     this.checkIfTutorialSeen();
@@ -103,40 +111,42 @@ export default class Homescreen extends Component {
     }
   };
 
+  componentDidMount() {
+    this.backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (this.state.browseFilesModalVisible) {
+        this.setState({ browseFilesModalVisible: false, modalVisible: true });
+        return true; // prevent the default back action
+      }
+      return false; // if browseFilesModalVisible is false, use default back behavior
+    });
+  }
+  
+  componentWillUnmount() {
+    this.backHandler.remove();
+  }
 
-  // Handles GIF press to show the main modal
-  handleGifPress = () => {
+   // Opens the Main Modal
+   openMainModal = () => {
     this.setState({ modalVisible: true });
   };
 
-
-   // Opens the type modal and hides the GIF only on iOS
-   openTypeModal = () => {
-    if (Platform.OS === 'ios') {
-      this.setState({ showGif: false, typeModalVisible: true });
-    } else {
-      this.setState({ typeModalVisible: true }); // Old behavior for Android
-    }
+  // Closes the Main Modal
+  closeMainModal = () => {
+    this.setState({ modalVisible: false });
   };
 
+  // Opens the Type of Report Modal
+  openTypeModal = () => {
+    this.closeMainModal();
+    setTimeout(() => {
+      this.setState({ typeModalVisible: true });
+    }, 100);
+  };
+
+  // Closes the Type of Report Modal
   closeTypeModal = () => {
     this.setState({ typeModalVisible: false });
   };
-
-    // Opens the browse files modal and hides the GIF only on iOS
-    handleBrowseFiles = () => {
-      if (Platform.OS === 'ios') {
-        this.setState({ showGif: false, browseFilesModalVisible: true });
-      } else {
-        this.setState({ browseFilesModalVisible: true }); // Old behavior for Android
-      }
-    };
-
-    closeModal = (modalType) => {
-      this.setState({ [modalType]: false });
-    };
-  
-
 
 
   checkTermsAgreement = async () => {
@@ -187,12 +197,19 @@ export default class Homescreen extends Component {
     }
   };
 
+  // Request location permission (handle iOS and Android differently)
   requestLocationPermission = async () => {
     let { status } = await Location.requestForegroundPermissionsAsync();
+    
     if (status !== 'granted') {
-      Alert.alert('Permission Denied', 'Permission to access location was denied');
+      Alert.alert('Permission Denied', 'Location permission is required for this feature.');
+      return;
     }
+
+    let location = await Location.getCurrentPositionAsync({});
+    this.setState({ location });
   };
+
 
   fetchTypes = async () => {
     try {
@@ -215,14 +232,28 @@ export default class Homescreen extends Component {
     }
   };
 
+    // Function to handle opening the "Type of Emergency" dropdown
+    handleToggleTypeModal = () => {
+      this.setState({ typeModalVisible: true });
+    };
+
   handleTypeSelect = (type) => {
+    this.setState({ selectedReportType: type }, () => {
+      this.closeTypeModal();  // Close Type of Report modal
+      this.openMainModal(); 
+    // Log the selected type for debugging
+    console.log(`Selected type: ${type}`);
+
     this.setState({
-      typeModalVisible: false,
-      type: type,
-      showOtherInput: type === 'OTHERS',
-      otherType: ''
+        typeModalVisible: false,
+        type: type,
+        showOtherInput: type === 'OTHERS', // Show additional input if "OTHERS" is selected
+        otherType: '' // Reset otherType when a valid type is selected
+        
     });
-  };
+  });
+};
+
 
   handleSubmit = async () => {
     const { avatarSource, name, contact, type, otherType, isSubmitting, showOtherInput } = this.state;
@@ -320,52 +351,50 @@ export default class Homescreen extends Component {
 
 
 
-    renderTypeButtons = () => {
-      const reportTypes = [
-        { label: 'FIRE', icon: require('../assets/fire.png') },
-        { label: 'ACCIDENT', icon: require('../assets/Accident.png') },
-        { label: 'CRIME OR THIEF', icon: require('../assets/CrimeThief.png') },
-        { label: 'NOISE', icon: require('../assets/Noise.png') },
-        { label: 'OTHERS', icon: require('../assets/Other.png') },
-      ];
-    
-      return reportTypes.map((type, index) => (
-        <TouchableOpacity
-          key={index}
-          style={[
-            tw`flex-row items-center my-2 rounded-lg px-4 py-3`,
-            {
-              backgroundColor: '#fff6f0',
-              borderRadius: 15,
-              shadowColor: '#000',
-              shadowOffset: { width: 0, height: 2 },
-              shadowOpacity: 0.1,
-              shadowRadius: 4,
-              elevation: 3,
-            },
-          ]}
-          activeOpacity={0.7} // Add active opacity for better feedback
-          onPress={() => {
-            setTimeout(() => {
-              this.handleTypeSelect(type.label);
-            }, 100); // Add delay for iOS responsiveness
-          }}
-        >
-          <Image
-            source={type.icon}
-            style={{ width: 40, height: 40, marginRight: 10 }}
-          />
-          <Text style={tw`flex-1 text-lg font-bold text-center text-black`}>
-            {type.label}
-          </Text>
-        </TouchableOpacity>
-      ));
-    };
+   // Improved renderTypeButtons function
+renderTypeButtons = () => {
+  const reportTypes = [
+    { label: 'FIRE', icon: require('../assets/fire.png') },
+    { label: 'ACCIDENT', icon: require('../assets/Accident.png') },
+    { label: 'CRIME OR THIEF', icon: require('../assets/CrimeThief.png') },
+    { label: 'NOISE', icon: require('../assets/Noise.png') },
+    { label: 'OTHERS', icon: require('../assets/Other.png') },
+  ];
+
+  return reportTypes.map((type, index) => (
+    <TouchableOpacity
+      key={index}
+      style={[
+        tw`flex-row items-center my-2 rounded-lg px-4 py-3`,
+        {
+          backgroundColor: '#fff6f0',
+          borderRadius: 15,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.1,
+          shadowRadius: 4,
+          elevation: 3,
+        },
+      ]}
+      activeOpacity={0.7} // Add active opacity for better feedback
+      onPress={() => {
+        this.handleTypeSelect(type.label); // Directly call the selection handler
+      }}>
+      <Image
+        source={type.icon}
+        style={{ width: 40, height: 40, marginRight: 10 }}
+      />
+      <Text style={tw`flex-1 text-lg font-bold text-center text-black`}>
+        {type.label}
+      </Text>
+    </TouchableOpacity>
+  ));
+};
     
 
-
-  
-  
+  handleGifPress = () => {
+    this.setState({ modalVisible: true });
+  };
 
   closeModal = () => {
     this.setState({ 
@@ -389,15 +418,10 @@ export default class Homescreen extends Component {
     this.setState({ fullScreenModalVisible: false });
   };
 
- // Opens the browse files modal and hides the GIF only on iOS
- handleBrowseFiles = () => {
-  if (Platform.OS === 'ios') {
-    this.setState({ showGif: false, browseFilesModalVisible: true });
-  } else {
-    this.setState({ browseFilesModalVisible: true }); // Old behavior for Android
-  }
-};
-
+  // Function to handle opening the "Browse Files" modal
+  handleBrowseFiles = () => {
+    this.setState({ browseFilesModalVisible: true });
+  };
   
   
   // Function to close the custom modal
@@ -407,17 +431,17 @@ export default class Homescreen extends Component {
 
   handleCamera = async () => {
     const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
-
+  
     if (permissionResult.granted === false) {
       Alert.alert("Permission required", "Permission to access camera is required!");
       return;
     }
-
+  
     let result = await ImagePicker.launchCameraAsync({
-      allowsEditing: false,  // Disable cropping
+      allowsEditing: false,
       quality: 1,
     });
-
+  
     if (!result.canceled) {
       const uniqueName = `${Date.now()}.jpg`;
       const newUri = FileSystem.documentDirectory + uniqueName;
@@ -429,25 +453,87 @@ export default class Homescreen extends Component {
   
       const asset = await MediaLibrary.createAssetAsync(newUri);
   
-      this.setState({ 
-        avatarSource: { uri: asset.uri },
-        isImageSelected: true,
-      });
+      this.setState({ avatarSource: { uri: asset.uri }, isImageSelected: true, modalVisible: true });
+    } else {
+      this.setState({ modalVisible: true }); // Reopen modal if canceled
     }
   };
+  
 
-  handleLibrary = async () => {
+
+
+
+  // Open image picker, with platform-specific settings if necessary
+  pickImage = async () => {
     let result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: false,  
+      allowsEditing: true,
+      aspect: [4, 3],
       quality: 1,
     });
 
     if (!result.canceled) {
-      const source = { uri: result.assets[0].uri };
-      this.setState({ avatarSource: source, isImageSelected: true });
+      const imageUri = result.uri;
+
+      // Platform-specific handling of file URI (required for Android vs iOS)
+      if (Platform.OS === 'android') {
+        // Convert the file URI if needed
+        const fileUri = await FileSystem.getInfoAsync(imageUri);
+      }
+
+      this.setState({ avatarSource: imageUri, isImageSelected: true });
     }
   };
+
+  // Handle media library permissions (iOS requires extra checks)
+  requestMediaLibraryPermission = async () => {
+    const { status } = await MediaLibrary.requestPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission Denied', 'We need permission to access your media library.');
+    }
+  };
+
+ // handleLibrary and handleCamera updated to reopen modal
+handleLibrary = async () => {
+  let result = await ImagePicker.launchImageLibraryAsync({
+    mediaTypes: ImagePicker.MediaTypeOptions.Images,
+    allowsEditing: false,
+    quality: 1,
+  });
+
+  if (!result.canceled) {
+    const source = { uri: result.assets[0].uri };
+    this.setState({ avatarSource: source, isImageSelected: true, modalVisible: true });
+  } else {
+    this.setState({ modalVisible: true }); // Reopen modal if canceled
+  }
+};
+
+  async openFilePicker() {
+    try {
+      // Request permission to access media library
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        alert('Permission to access media is required!');
+        return;
+      }
+  
+      // Open the media library to pick a file
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images, // You can change to Video, etc.
+        allowsEditing: true,
+        quality: 1,
+      });
+  
+      if (!result.canceled) {
+        // Save the selected image's URI to state or process the file
+        this.setState({ avatarSource: result.uri, isImageSelected: true });
+      }
+    } catch (error) {
+      console.error('Error opening file picker:', error);
+    }
+  }
+  
 
   handleNameChange = (text) => {
     this.setState({ name: text });
@@ -476,15 +562,12 @@ export default class Homescreen extends Component {
           <Text style={tw`text-15px text-gray-500 font-bold mb-2 text-center mt-3`}>Press the button below, help will reach</Text>
           <Text style={tw`text-15px text-gray-500 font-bold mb-1 text-center`}>Soon!</Text>
   
-          {/* Display GIF and handle click to show modal */}
-          {this.state.showGif && (
-            <TouchableOpacity onPress={this.handleGifPress}>
-              <Image
-                source={require('../assets/alarm.gif')}
-                style={tw`w-70 h-70 mt-1`}
-              />
-            </TouchableOpacity>
-          )}
+          <TouchableOpacity onPress={this.handleGifPress}>
+            <Image
+              source={require('../assets/alarm.gif')}
+              style={tw`w-70 h-70 mt-1`}
+            />
+          </TouchableOpacity>
   
           {/* Navigation Buttons */}
           <View style={tw`absolute bottom-1 left-2 flex-row`}>
@@ -522,10 +605,10 @@ export default class Homescreen extends Component {
   
        {/* Emergency Alert Modal */}
        <Modal
-             animationType="slide"
-             transparent={true}
-             visible={modalVisible}
-             onRequestClose={() => this.closeModal('modalVisible')}
+            animationType="slide"
+            transparent={true}
+            visible={modalVisible}
+            onRequestClose={this.closeModal}
           >
             <View style={tw`flex-1 justify-center items-center bg-black bg-opacity-20`}>
               <View style={tw`w-80 bg-[#fff6f0] rounded-lg p-6 items-center shadow-md relative`}>
@@ -533,7 +616,7 @@ export default class Homescreen extends Component {
                 {/* Close Button on the Top Right */}
                 <TouchableOpacity
                   style={tw`absolute top-4 right-4 w-8 h-8`}
-                  onPress={() => this.closeModal('modalVisible')}
+                  onPress={this.closeModal}
                 >
                   <Image
                     source={require('../assets/close_button.png')}
@@ -567,62 +650,72 @@ export default class Homescreen extends Component {
                   <TextInput
                     style={tw`w-full h-12 bg-white rounded-lg border border-gray-300 px-3 mb-4 text-black`}
                     placeholder="Enter your contact"
+                    keyboardType="numeric"
+                    maxLength={10}
                     placeholderTextColor="#868686"
                     onChangeText={(text) => this.setState({ contact: text })}
                     value={contact}
                   />
 
-                {/* Type of Emergency Display */}
-                <TouchableOpacity
-                  style={tw`w-full h-12 bg-white rounded-lg border border-gray-300 flex-row items-center justify-between px-3 mb-1`}
-                  onPress={this.openTypeModal} // Open type modal here
-                  onRequestClose={this.closeTypeModal}
-                >
+                        {/* Type of Emergency Dropdown */}
+                  <TouchableOpacity
+                    style={tw`w-full h-12 bg-white rounded-lg border border-gray-300 flex-row items-center justify-between px-3 mb-1`}
+                    onPress={() => {
+                      this.setState({ modalVisible: false }, () => {
+                        // Set timeout to open Type of Emergency modal
+                        setTimeout(() => {
+                          this.setState({ typeModalVisible: true });
+                        }, 100);
+                      });
+                    }}
+                  >
                   <Text style={tw`text-black text-base`}>
-                    {this.state.type ? this.state.type : 'TYPE OF EMERGENCY'}
+                    {type ? type : 'TYPE OF EMERGENCY'}
                   </Text>
                   <Image source={require('../assets/arrowdown.png')} style={tw`w-6 h-6`} />
                 </TouchableOpacity>
 
-                {/* Conditionally Render "Other (Specify)" Input */}
-                {showOtherInput && (
-                  <View style={tw`w-full flex-row items-center mb-2 mt-3`}>
-                    <View style={tw`bg-gray-300 w-23 h-12 px-3 justify-center rounded-l-lg`}>
-                      <Text style={tw`text-black font-bold`}>Other (Specify):</Text>
-                    </View>
-                    <TextInput
-                      style={tw`flex-1 h-12 bg-white rounded-r-lg border border-gray-300 px-3 text-black`}
-                      placeholder="Enter type of emergency"
-                      placeholderTextColor="#868686"
-                      onChangeText={(text) => this.setState({ otherType: text })}
-                      value={otherType}
-                    />
-                  </View>
-                )}
-
-
-                  {/* Upload Image Section */}
-                  <Text style={tw`text-black text-base font-bold mb-1`}>UPLOAD IMAGE</Text>
-                  <View style={tw`w-full flex-row items-center justify-between bg-white border border-gray-300 rounded-lg p-2 mb-4`}>
-                    {/* File Description Text or Selected Image Preview */}
-                    {isImageSelected ? (
-                      <Image
-                        source={{ uri: avatarSource.uri }}
-                        style={{ width: 60, height: 60, marginRight: 10, borderRadius: 5 }} // Adjust the style as needed
-                      />
-                    ) : (
-                      <Text style={tw`text-gray-600 flex-1`}>CHOOSE FILE TO UPLOAD</Text>
+                 {/* Conditionally Render "Other (Specify)" Input */}
+                    {showOtherInput && (
+                      <View style={tw`w-full flex-row items-center mb-2 mt-3`}>
+                        <View style={tw`bg-gray-300 w-23 h-12 px-3  justify-center rounded-l-lg`}>
+                          <Text style={tw`text-black font-bold`}>Other (Specify):</Text>
+                        </View>
+                        <TextInput
+                          style={tw`flex-1 h-12 bg-white rounded-r-lg border border-gray-300 px-3 text-black`}
+                          placeholder="Enter type of emergency"
+                          placeholderTextColor="#868686"
+                          onChangeText={(text) => this.setState({ otherType: text })}
+                          value={otherType}
+                        />
+                      </View>
                     )}
 
-                    {/* Browse Files Button */}
-                    <TouchableOpacity
-                      style={tw`bg-gray-300 px-4 py-2 rounded-lg`}
-                      onPress={this.handleBrowseFiles} // Updated to call the function to open the modal
-                    >
-                      <Text style={tw`text-black font-bold`}>BROWSE FILES</Text>
-                    </TouchableOpacity>
+
+                    {/* Upload Image Section */}
+                    <Text style={tw`text-black text-base font-bold mb-1`}>UPLOAD IMAGE</Text>
+                    <View style={tw`w-full flex-row items-center justify-between bg-white border border-gray-300 rounded-lg p-2 mb-4`}>
+                      {/* File Description Text or Selected Image Preview */}
+                      {isImageSelected ? (
+                        <Image
+                          source={{ uri: avatarSource.uri }}
+                          style={{ width: 60, height: 60, marginRight: 10, borderRadius: 5 }}
+                        />
+                      ) : (
+                        <Text style={tw`text-gray-600 flex-1`}>CHOOSE FILE TO UPLOAD</Text>
+                      )}
+
+                      {/* Browse Files Button */}
+                      <TouchableOpacity
+                        style={tw`bg-gray-300 px-4 py-2 rounded-lg`}
+                        onPress={() => {
+                          this.setState({ modalVisible: false, browseFilesModalVisible: true });
+                        }}
+                      >
+                        <Text style={tw`text-black font-bold`}>BROWSE FILES</Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
-                </View>
 
                 {/* Submit Button */}
                   <TouchableOpacity
@@ -640,29 +733,30 @@ export default class Homescreen extends Component {
             </View>
           </Modal>
 
-{/* Types of Alert Modal */}
-          <Modal
-            animationType="slide"
-            transparent={true}
-            visible={typeModalVisible}
-            onRequestClose={this.closeTypeModal}
-          >
-            <View style={tw`flex-1 justify-center items-center bg-black bg-opacity-20`}>
-              <View style={tw`w-80 bg-white rounded-3xl p-6 items-center shadow-md`}>
-                <TouchableOpacity
-                  style={tw`absolute top-3 right-3`}
-                  onPress={() => this.setState({ typeModalVisible: false })}
-                >
-                  <Image source={require('../assets/close_button.png')} style={{ width: 40, height: 40 }} resizeMode="contain" />
-                </TouchableOpacity>
-                <Text style={tw`text-2xl font-bold mt-4 mb-2 text-black`}> Type of Report</Text>
-                <View style={tw`w-full`}>
-                  {this.renderTypeButtons()}
-                </View>
-              </View>
-            </View>
-          </Modal>
 
+       {/* Type of Report Overlay */}
+  {typeModalVisible && (
+    <View style={tw`absolute inset-0 flex-1 justify-center items-center bg-black bg-opacity-20`}>
+      <View style={tw`w-80 bg-white rounded-3xl p-6 items-center shadow-md relative`}>
+
+        {/* Close Button */}
+        <TouchableOpacity
+          style={tw`absolute top-3 right-3`}
+          onPress={() => this.setState({ typeModalVisible: false, modalVisible: true })}   
+        >
+          <Image source={require('../assets/close_button.png')} style={{ width: 40, height: 40 }} resizeMode="contain" />
+        </TouchableOpacity>
+
+        {/* Title */}
+        <Text style={tw`text-2xl font-bold mt-4 mb-2 text-black`}>Type of Report</Text>
+
+        {/* Report Type Options */}
+        <View style={tw`w-full`}>
+          {this.renderTypeButtons()}
+        </View>
+      </View>
+    </View>
+  )}
 
   
           {/* Full Screen Image Modal */}
@@ -746,60 +840,45 @@ export default class Homescreen extends Component {
 </Modal>
 
 
-          {/* Browse Files Modal */}
-          <Modal
-            animationType="slide"
-            transparent={true}
-            visible={browseFilesModalVisible}
-            onRequestClose={this.closeBrowseFilesModal}
-          >
-            <View style={tw`flex-1 justify-center items-center bg-black bg-opacity-20`}>
-              <View style={tw`w-80 bg-[#fff6f0] rounded-3xl p-6 items-center shadow-md relative`}>
-                <Text style={tw`text-xl font-bold mt-2 mb-4 text-black`}>Choose an option</Text>
-                
-                {/* Camera Button */}
-                <TouchableOpacity
-                  style={[tw`flex-row items-center my-2 rounded-lg px-4 py-3 w-full`, { backgroundColor: '#fff', borderRadius: 15 }]}
-                  onPress={() => {
-                    this.closeBrowseFilesModal();
-                    this.handleCamera();
-                  }}
-                >
-                  <Image
-                    source={require('../assets/camera.png')}
-                    style={{ width: 40, height: 40, marginRight: 15 }}
-                  />
-                  <Text style={[tw`flex-1 text-lg font-bold text-black`]}>Take a picture</Text>
-                </TouchableOpacity>
+{browseFilesModalVisible && (
+  <View style={tw`absolute inset-0 flex-1 justify-center items-center bg-black bg-opacity-20`}>
+    <View style={tw`w-80 bg-[#fff6f0] rounded-3xl p-6 items-center shadow-md relative`}>
+      <Text style={tw`text-xl font-bold mt-2 mb-4 text-black`}>Choose an option</Text>
 
-                {/* Photo Library Button */}
-                <TouchableOpacity
-                  style={[tw`flex-row items-center my-2 rounded-lg px-4 py-3 w-full`, { backgroundColor: '#fff', borderRadius: 15 }]}
-                  onPress={() => {
-                    this.closeBrowseFilesModal();
-                    this.handleLibrary();
-                  }}
-                >
-                  <Image
-                    source={require('../assets/upload.png')}
-                    style={{ width: 40, height: 40, marginRight: 15 }}
-                  />
-                  <Text style={[tw`flex-1 text-lg font-bold text-black`]}>Upload a file</Text>
-                </TouchableOpacity>
+      {/* Camera Button */}
+      <TouchableOpacity
+        style={tw`flex-row items-center my-2 rounded-lg px-4 py-3 w-full`}
+        onPress={() => {
+          this.setState({ browseFilesModalVisible: false });
+          this.handleCamera();
+        }}
+      >
+        <Image source={require('../assets/camera.png')} style={{ width: 40, height: 40, marginRight: 15 }} />
+        <Text style={tw`flex-1 text-lg font-bold text-black`}>Take a picture</Text>
+      </TouchableOpacity>
 
-                {/* Cancel Button */}
-                <TouchableOpacity
-                  style={[tw`flex-row items-center justify-center my-2 rounded-lg px-4 py-3 w-40`, { backgroundColor: '#801B22', borderRadius: 15 }]}
-                  onPress={this.closeBrowseFilesModal}
-                >
-                  <Text style={tw`text-2xl font-bold text-white text-center`}>CANCEL</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </Modal>
+      {/* Photo Library Button */}
+      <TouchableOpacity
+        style={tw`flex-row items-center my-2 rounded-lg px-4 py-3 w-full`}
+        onPress={() => {
+          this.setState({ browseFilesModalVisible: false });
+          this.handleLibrary();
+        }}
+      >
+        <Image source={require('../assets/upload.png')} style={{ width: 40, height: 40, marginRight: 15 }} />
+        <Text style={tw`flex-1 text-lg font-bold text-black`}>Upload a file</Text>
+      </TouchableOpacity>
 
-
-
+      {/* Cancel Button */}
+      <TouchableOpacity
+        style={tw`bg-[#801B22] w-40 py-3 my-2 rounded-lg items-center`}
+        onPress={() => this.setState({ browseFilesModalVisible: false, modalVisible: true })}
+      >
+        <Text style={tw`text-2xl font-bold text-white`}>CANCEL</Text>
+      </TouchableOpacity>
+    </View>
+  </View>
+)}
   
                       {/* Developer Modal */}
             <Modal
